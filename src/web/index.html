@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>ErosSoundX Mobile Remote</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Google Fonts for Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Header Section -->
+        <header class="app-header">
+            <div class="logo-area">
+                <span class="logo-accent">ErosSoundX</span>
+                <span class="logo-sub">Remote</span>
+            </div>
+            <div id="status-badge" class="badge offline">
+                <span class="badge-dot"></span>
+                <span class="badge-text">Offline</span>
+            </div>
+        </header>
+
+        <!-- Tab Selector Row -->
+        <section class="tabs-section">
+            <div id="tabs-container" class="tabs-container">
+                <!-- Tabs will be rendered here dynamically -->
+            </div>
+        </section>
+
+        <!-- Main Content Area -->
+        <main class="grid-section">
+            <div id="cards-grid" class="cards-grid">
+                <!-- Sound cards will be rendered here dynamically -->
+            </div>
+        </main>
+
+        <!-- Global Action Bar at bottom -->
+        <footer class="action-footer">
+            <button id="btn-stop-all" class="btn-stop-all">
+                <span class="stop-icon">■</span> STOP ALL AUDIO
+            </button>
+        </footer>
+
+        <!-- Connection Error Overlay -->
+        <div id="error-overlay" class="overlay hidden">
+            <div class="overlay-content">
+                <div class="overlay-icon">⚡</div>
+                <h2>Connection Lost</h2>
+                <p>Searching for desktop host on local network...</p>
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script File -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

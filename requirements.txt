@@ -1,0 +1,14 @@
+customtkinter>=5.2.0
+supabase==2.23.0
+python-dotenv>=1.0.0
+pygame-ce
+pynput>=1.7.6
+fastapi>=0.100.0
+uvicorn>=0.22.0
+websockets>=11.0.0
+qrcode>=7.4.2
+coverage>=7.0.0
+
+
+
+

@@ -1,0 +1,15 @@
+{
+    "theme": "Dark",
+    "window_width": 900,
+    "window_height": 600,
+    "supabase_url": "https://mqczhnwuyedouezdqotw.supabase.co/rest/v1/",
+    "supabase_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xY3pobnd1eWVkb3VlemRxb3R3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0MTU0NzQsImV4cCI6MjA5NTk5MTQ3NH0.LpteO01Z6oYraisyeq0g9lwcjP2YVjtdcB44NpetQJ0",
+    "remember_me": true,
+    "last_session": {
+        "user_id": "089d7495-d470-44da-94d9-1eba4c1a96d5",
+        "email": "damienjosephmartin10@gmail.com"
+    },
+    "streamer_mode": false,
+    "master_volume": 0.0,
+    "panic_hotkey": "Escape"
+}

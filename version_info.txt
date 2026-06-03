@@ -1,0 +1,28 @@
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+    ),
+  kids=[
+    StringFileInfo(
+      [
+      StringTable(
+        u'040904B0',
+        [StringStruct(u'CompanyName', u'ErosSoundX Team'),
+        StringStruct(u'FileDescription', u'ErosSoundX Cyberpunk Soundboard'),
+        StringStruct(u'FileVersion', u'1.0.0.0'),
+        StringStruct(u'InternalName', u'ErosSoundX'),
+        StringStruct(u'LegalCopyright', u'Copyright (c) 2026 ErosSoundX Team'),
+        StringStruct(u'OriginalFilename', u'ErosSoundX.exe'),
+        StringStruct(u'ProductName', u'ErosSoundX'),
+        StringStruct(u'ProductVersion', u'1.0.0.0')])
+      ]), 
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)
