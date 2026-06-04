@@ -96,6 +96,8 @@ class TestRemoteControl(unittest.TestCase):
             })
             
             # Allow time for messages to process inside client loops
+            import time
+            time.sleep(0.05)
             mock_audio_engine.play_sound.assert_called_with(
                 sound_id="sound-abc",
                 file_path="cache/sound-abc.wav",
@@ -107,12 +109,14 @@ class TestRemoteControl(unittest.TestCase):
                 "action": "stop",
                 "sound_id": "sound-abc"
             })
+            time.sleep(0.05)
             mock_audio_engine.stop_sound.assert_called_with("sound-abc")
 
             # Send stop_all command payload
             websocket.send_json({
                 "action": "stop_all"
             })
+            time.sleep(0.05)
             mock_audio_engine.stop_all.assert_called()
 
     @patch("src.api_server.is_local_ip")

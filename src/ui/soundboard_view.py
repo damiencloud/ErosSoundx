@@ -12,13 +12,14 @@ class SoundboardView(ctk.CTkFrame):
         
         self.active_board_id = None  # None, "favorites", or UUID of a soundboard
         self.active_board_name = ""
+        self.play_indicators = {}    # Maps sound_id to CTkLabel for status indicator
 
         # --- LAYOUT SPLIT ---
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         # 1. Top Panel (Soundboard Tabs & Controls)
-        self.top_panel = ctk.CTkFrame(self, fg_color="#121320", height=60, corner_radius=10, border_color="#1f2833", border_width=1)
+        self.top_panel = ctk.CTkFrame(self, fg_color="#111222", height=60, corner_radius=10, border_color="#1a1b35", border_width=1)
         self.top_panel.grid(row=0, column=0, sticky="ew", padx=25, pady=(25, 10))
         self.top_panel.grid_propagate(False)
 
@@ -45,6 +46,24 @@ class SoundboardView(ctk.CTkFrame):
         self.tab_elements = {}
 
         self.update_view()
+        self.check_active_playbacks()
+
+    def check_active_playbacks(self):
+        """
+        Periodically polls the active playbacks and updates status dots in real-time.
+        """
+        if self.winfo_exists():
+            from src.audio.audio_engine import audio_engine
+            for sound_id, lbl in list(self.play_indicators.items()):
+                try:
+                    if lbl.winfo_exists():
+                        if audio_engine.is_playing(sound_id):
+                            lbl.configure(text="● PLAYING", text_color="#03dac6")
+                        else:
+                            lbl.configure(text="● IDLE", text_color="#8e9aaf")
+                except Exception:
+                    pass
+            self.after(200, self.check_active_playbacks)
 
     def update_view(self):
         """
@@ -112,16 +131,10 @@ class SoundboardView(ctk.CTkFrame):
     def create_tab_button(self, board_id, name, is_virtual=False, category="", is_favorite=False):
         """
         Renders a single tab button in the horizontal tab bar.
-
-        Favorited boards receive a ★ prefix in their display label so users
-        can identify them at a glance. The virtual "★ Favorites" tab is
-        treated separately (is_virtual=True) and never receives the prefix.
         """
         if is_virtual:
-            # Already contains the star, render verbatim
             display_text = name
         else:
-            # Build label: star prefix for favorites, then category suffix
             star = "★ " if is_favorite else ""
             cat_suffix = f" [{category}]" if category and category != "General" else ""
             display_text = f"{star}{name}{cat_suffix}"
@@ -146,7 +159,7 @@ class SoundboardView(ctk.CTkFrame):
         # Update visual highlight of tab buttons
         for bid, btn in self.tab_elements.items():
             if bid == board_id:
-                btn.configure(fg_color="#1a1c30", text_color="#00f0ff", border_color="#00f0ff", border_width=1)
+                btn.configure(fg_color="#111222", text_color="#00f0ff", border_color="#00f0ff", border_width=1)
             else:
                 btn.configure(fg_color="transparent", text_color="#edf2f4", border_width=0)
 
@@ -163,26 +176,24 @@ class SoundboardView(ctk.CTkFrame):
             w.destroy()
 
         if board_id != "favorites":
-            # Determine current favorite state for this board
             boards = soundboard_manager.get_boards()
             active_board = next((b for b in boards if b["id"] == board_id), None)
             current_is_favorite = active_board.get("is_favorite", 0) == 1 if active_board else False
 
-            # --- Favorite / Unfavorite toggle button ---
             fav_label = "★ Unfavorite" if current_is_favorite else "☆ Favorite"
-            fav_fg    = "#1a1c30"
+            fav_fg    = "#111222"
             fav_hover = "#bc00dd" if current_is_favorite else "#00f0ff"
             fav_tc    = "#ffb703" if current_is_favorite else "#edf2f4"
 
             fav_btn = ctk.CTkButton(
                 self.board_actions_frame,
                 text=fav_label,
-                width=90,
+                width=95,
                 height=26,
                 fg_color=fav_fg,
                 text_color=fav_tc,
                 hover_color=fav_hover,
-                border_color="#1f2833",
+                border_color="#1a1b35",
                 border_width=1,
                 font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
                 command=lambda bid=board_id, fav=current_is_favorite: self.toggle_board_favorite(bid, not fav)
@@ -194,10 +205,10 @@ class SoundboardView(ctk.CTkFrame):
                 text="Rename",
                 width=65,
                 height=26,
-                fg_color="#1a1c30",
+                fg_color="#111222",
                 hover_color="#bc00dd",
                 text_color="#edf2f4",
-                border_color="#1f2833",
+                border_color="#1a1b35",
                 border_width=1,
                 font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
                 command=self.open_rename_board_dialog
@@ -209,7 +220,7 @@ class SoundboardView(ctk.CTkFrame):
                 text="Delete",
                 width=65,
                 height=26,
-                fg_color="#1a1c30",
+                fg_color="#111222",
                 text_color="#ff0055",
                 hover_color="#ff0055",
                 border_color="#ff0055",
@@ -224,10 +235,10 @@ class SoundboardView(ctk.CTkFrame):
                 text="Export Pack",
                 width=80,
                 height=26,
-                fg_color="#1a1c30",
+                fg_color="#111222",
                 text_color="#03dac6",
                 hover_color="#03dac6",
-                border_color="#1f2833",
+                border_color="#1a1b35",
                 border_width=1,
                 font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
                 command=self.export_soundboard_pack
@@ -238,24 +249,16 @@ class SoundboardView(ctk.CTkFrame):
         self.load_sound_grid()
 
     def toggle_board_favorite(self, board_id: str, new_state: bool):
-        """
-        Handles the Favorite / Unfavorite toggle for a soundboard.
-
-        Calls the service layer to persist the change, then redraws the
-        entire tab bar so the star prefix and sort order update immediately.
-        The currently selected tab is preserved across the refresh.
-        """
         if not board_id or board_id == "favorites":
             return
         soundboard_manager.toggle_board_favorite(board_id, new_state)
-        # update_view() preserves self.active_board_id, so the tab re-selects automatically
         self.update_view()
-
 
     def load_sound_grid(self):
         """Clears and redraws the sound card grid for the active tab."""
         for widget in self.grid_scroll.winfo_children():
             widget.destroy()
+        self.play_indicators.clear()
 
         # Fetch sound data
         if self.active_board_id == "favorites":
@@ -272,7 +275,7 @@ class SoundboardView(ctk.CTkFrame):
                 empty_frame,
                 text="🎵",
                 font=ctk.CTkFont(size=48),
-                text_color="#1f2833"
+                text_color="#1a1b35"
             ).pack(pady=(0, 12))
             ctk.CTkLabel(
                 empty_frame,
@@ -292,7 +295,7 @@ class SoundboardView(ctk.CTkFrame):
                 width=140,
                 height=38,
                 fg_color="#00f0ff",
-                text_color="#0b0c10",
+                text_color="#04050a",
                 hover_color="#00b8cc",
                 font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
                 command=self.open_add_sound_dialog
@@ -331,9 +334,9 @@ class SoundboardView(ctk.CTkFrame):
         if self.active_board_id != "favorites":
             add_card = ctk.CTkFrame(
                 self.grid_scroll,
-                fg_color="#121320",
+                fg_color="#111222",
                 corner_radius=10,
-                border_color="#1f2833",
+                border_color="#1a1b35",
                 border_width=1,
                 height=190
             )
@@ -342,7 +345,7 @@ class SoundboardView(ctk.CTkFrame):
             
             # Hover effect for Add Card border
             add_card.bind("<Enter>", lambda e: add_card.configure(border_color="#bc00dd"))
-            add_card.bind("<Leave>", lambda e: add_card.configure(border_color="#1f2833"))
+            add_card.bind("<Leave>", lambda e: add_card.configure(border_color="#1a1b35"))
             
             add_btn = ctk.CTkButton(
                 add_card,
@@ -355,9 +358,7 @@ class SoundboardView(ctk.CTkFrame):
             )
             add_btn.place(relx=0.5, rely=0.5, anchor="center")
             
-            # Allow clicking anywhere on the card to open the dialog
             add_card.bind("<Button-1>", lambda e: self.open_add_sound_dialog())
-
 
     def create_sound_card(self, sound) -> ctk.CTkFrame:
         """
@@ -365,27 +366,39 @@ class SoundboardView(ctk.CTkFrame):
         """
         card = ctk.CTkFrame(
             self.grid_scroll,
-            fg_color="#121320",
+            fg_color="#111222",
             corner_radius=10,
-            border_color="#1f2833",
+            border_color="#1a1b35",
             border_width=1,
             height=190
         )
         card.grid_propagate(False)
 
         card.bind("<Enter>", lambda e: card.configure(border_color="#00f0ff"))
-        card.bind("<Leave>", lambda e: card.configure(border_color="#1f2833"))
+        card.bind("<Leave>", lambda e: card.configure(border_color="#1a1b35"))
 
-        # --- Sound Name ---
+        # --- Sound Name Row ---
+        title_frame = ctk.CTkFrame(card, fg_color="transparent")
+        title_frame.pack(fill="x", padx=14, pady=(12, 0))
+
         title = ctk.CTkLabel(
-            card,
+            title_frame,
             text=sound["name"],
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             text_color="#ffffff",
             anchor="w",
-            wraplength=160
+            wraplength=120
         )
-        title.pack(fill="x", padx=14, pady=(12, 0))
+        title.pack(side="left")
+
+        indicator = ctk.CTkLabel(
+            title_frame,
+            text="● IDLE",
+            font=ctk.CTkFont(family="Segoe UI", size=9, weight="bold"),
+            text_color="#8e9aaf"
+        )
+        indicator.pack(side="right")
+        self.play_indicators[sound["id"]] = indicator
 
         # --- File type + duration row ---
         info_frame = ctk.CTkFrame(card, fg_color="transparent")
@@ -396,7 +409,7 @@ class SoundboardView(ctk.CTkFrame):
             info_frame,
             text=ext.upper().lstrip(".") if ext else "?",
             font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
-            text_color="#0b0c10",
+            text_color="#ffffff",
             fg_color="#bc00dd",
             corner_radius=4,
             width=32,
@@ -460,7 +473,7 @@ class SoundboardView(ctk.CTkFrame):
             width=38,
             height=28,
             fg_color="#00f0ff",
-            text_color="#0b0c10",
+            text_color="#04050a",
             hover_color="#00b8cc",
             font=ctk.CTkFont(size=12, weight="bold"),
             command=lambda s=sound: self.play_sound(s)
@@ -474,8 +487,8 @@ class SoundboardView(ctk.CTkFrame):
             width=38,
             height=28,
             fg_color="#ff0055",
-            text_color="#0b0c10",
-            hover_color="#d00045",
+            text_color="#ffffff",
+            hover_color="#cc0044",
             font=ctk.CTkFont(size=12, weight="bold"),
             command=lambda s=sound: self.stop_sound(s)
         )
@@ -502,10 +515,10 @@ class SoundboardView(ctk.CTkFrame):
             text="Edit",
             width=48,
             height=28,
-            fg_color="#1a1c30",
+            fg_color="#111222",
             text_color="#edf2f4",
             hover_color="#bc00dd",
-            border_color="#1f2833",
+            border_color="#1a1b35",
             border_width=1,
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
             command=lambda s=sound: self.open_edit_sound_dialog(s)
@@ -515,29 +528,18 @@ class SoundboardView(ctk.CTkFrame):
         return card
 
     def on_slider_drag(self, sound_id: str, val: float, label: ctk.CTkLabel):
-        """
-        Handles real-time volume slider dragging by adjusting the active audio mixer channel volume.
-        """
         from src.audio.audio_engine import audio_engine
         audio_engine.set_sound_volume(sound_id, val)
         label.configure(text=f"Vol: {int(val * 100)}%")
 
     def on_slider_release(self, sound_id: str, val: float):
-        """
-        Persists the volume adjustment to SQLite when user releases the slider button.
-        """
         import threading
-        # Perform db update in background thread to keep UI completely responsive
         def update_db():
             soundboard_manager.update_sound_volume(sound_id, val)
         threading.Thread(target=update_db, daemon=True).start()
 
     def play_sound(self, sound):
-        """
-        Triggers audio playback via AudioEngine.
-        """
         from src.audio.audio_engine import audio_engine
-        # Play the sound
         audio_engine.play_sound(
             sound_id=sound["id"],
             file_path=sound["file_path"],
@@ -545,19 +547,13 @@ class SoundboardView(ctk.CTkFrame):
         )
 
     def stop_sound(self, sound):
-        """
-        Stops all channels playing the selected sound.
-        """
         from src.audio.audio_engine import audio_engine
         audio_engine.stop_sound(sound["id"])
 
     def toggle_sound_favorite(self, sound):
-        """Toggles the favorite flag on a sound and refreshes the grid."""
         new_state = not (sound.get("is_favorite", 0) == 1)
         soundboard_manager.toggle_favorite(sound["id"], new_state)
         self.load_sound_grid()
-
-
 
     # --- MODALS / DIALOGS ---
 
@@ -568,9 +564,8 @@ class SoundboardView(ctk.CTkFrame):
         dialog.resizable(False, False)
         dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
-        dialog.configure(fg_color="#121320")
+        dialog.configure(fg_color="#111222")
 
-        # Center Dialog on parent
         x = self.winfo_toplevel().winfo_x() + 200
         y = self.winfo_toplevel().winfo_y() + 150
         dialog.geometry(f"+{x}+{y}")
@@ -578,10 +573,10 @@ class SoundboardView(ctk.CTkFrame):
         title = ctk.CTkLabel(dialog, text="New Soundboard", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"), text_color="#00f0ff")
         title.pack(pady=(15, 10))
 
-        name_entry = ctk.CTkEntry(dialog, placeholder_text="Soundboard Name", width=260, height=35, fg_color="#0b0c10", border_color="#1f2833")
+        name_entry = ctk.CTkEntry(dialog, placeholder_text="Soundboard Name", width=260, height=35, fg_color="#04050a", border_color="#1a1b35")
         name_entry.pack(pady=8)
 
-        cat_entry = ctk.CTkEntry(dialog, placeholder_text="Category (e.g. Gaming, Memes)", width=260, height=35, fg_color="#0b0c10", border_color="#1f2833")
+        cat_entry = ctk.CTkEntry(dialog, placeholder_text="Category (e.g. Gaming, Memes)", width=260, height=35, fg_color="#04050a", border_color="#1a1b35")
         cat_entry.pack(pady=8)
 
         def save():
@@ -594,7 +589,7 @@ class SoundboardView(ctk.CTkFrame):
             else:
                 messagebox.showwarning("Warning", "Soundboard name cannot be empty.", parent=dialog)
 
-        btn = ctk.CTkButton(dialog, text="Create", fg_color="#00f0ff", text_color="#0b0c10", hover_color="#00b8cc", font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), command=save)
+        btn = ctk.CTkButton(dialog, text="Create", fg_color="#00f0ff", text_color="#04050a", hover_color="#00b8cc", font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), command=save)
         btn.pack(pady=12)
 
     def open_rename_board_dialog(self):
@@ -607,7 +602,7 @@ class SoundboardView(ctk.CTkFrame):
         dialog.resizable(False, False)
         dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
-        dialog.configure(fg_color="#121320")
+        dialog.configure(fg_color="#111222")
 
         x = self.winfo_toplevel().winfo_x() + 200
         y = self.winfo_toplevel().winfo_y() + 150
@@ -616,16 +611,15 @@ class SoundboardView(ctk.CTkFrame):
         title = ctk.CTkLabel(dialog, text="Edit Soundboard", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"), text_color="#00f0ff")
         title.pack(pady=(15, 10))
 
-        name_entry = ctk.CTkEntry(dialog, placeholder_text="New Name", width=260, height=35, fg_color="#0b0c10", border_color="#1f2833")
+        name_entry = ctk.CTkEntry(dialog, placeholder_text="New Name", width=260, height=35, fg_color="#04050a", border_color="#1a1b35")
         name_entry.pack(pady=8)
         name_entry.insert(0, self.active_board_name)
 
-        # Get existing category
         boards = soundboard_manager.get_boards()
         active_board = next((b for b in boards if b["id"] == self.active_board_id), None)
         active_cat = active_board["category"] if active_board else "General"
 
-        cat_entry = ctk.CTkEntry(dialog, placeholder_text="New Category", width=260, height=35, fg_color="#0b0c10", border_color="#1f2833")
+        cat_entry = ctk.CTkEntry(dialog, placeholder_text="New Category", width=260, height=35, fg_color="#04050a", border_color="#1a1b35")
         cat_entry.pack(pady=8)
         cat_entry.insert(0, active_cat)
 
@@ -640,7 +634,7 @@ class SoundboardView(ctk.CTkFrame):
             else:
                 messagebox.showwarning("Warning", "Soundboard name cannot be empty.", parent=dialog)
 
-        btn = ctk.CTkButton(dialog, text="Update", fg_color="#00f0ff", text_color="#0b0c10", hover_color="#00b8cc", font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), command=save)
+        btn = ctk.CTkButton(dialog, text="Update", fg_color="#00f0ff", text_color="#04050a", hover_color="#00b8cc", font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), command=save)
         btn.pack(pady=12)
 
     def open_delete_board_dialog(self):
@@ -668,7 +662,7 @@ class SoundboardView(ctk.CTkFrame):
         dialog.resizable(False, False)
         dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
-        dialog.configure(fg_color="#121320")
+        dialog.configure(fg_color="#111222")
         dialog.geometry(f"+{self.winfo_toplevel().winfo_x() + 200}+{self.winfo_toplevel().winfo_y() + 150}")
 
         ctk.CTkLabel(
@@ -678,14 +672,13 @@ class SoundboardView(ctk.CTkFrame):
             text_color="#00f0ff"
         ).pack(pady=(18, 10))
 
-        name_entry = ctk.CTkEntry(dialog, placeholder_text="Sound Name", width=320, height=35, fg_color="#0b0c10", border_color="#1f2833")
+        name_entry = ctk.CTkEntry(dialog, placeholder_text="Sound Name", width=320, height=35, fg_color="#04050a", border_color="#1a1b35")
         name_entry.pack(pady=6)
 
-        # File picker row
         file_row = ctk.CTkFrame(dialog, fg_color="transparent")
         file_row.pack(pady=6, fill="x", padx=40)
 
-        path_entry = ctk.CTkEntry(file_row, placeholder_text="No file selected…", width=220, height=35, fg_color="#0b0c10", border_color="#1f2833")
+        path_entry = ctk.CTkEntry(file_row, placeholder_text="No file selected…", width=220, height=35, fg_color="#04050a", border_color="#1a1b35")
         path_entry.pack(side="left", padx=(0, 8))
 
         def pick_file():
@@ -725,7 +718,7 @@ class SoundboardView(ctk.CTkFrame):
 
         ctk.CTkButton(
             dialog, text="Add Sound",
-            fg_color="#00f0ff", text_color="#0b0c10", hover_color="#00b8cc",
+            fg_color="#00f0ff", text_color="#04050a", hover_color="#00b8cc",
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             command=save
         ).pack(pady=14)
@@ -738,7 +731,7 @@ class SoundboardView(ctk.CTkFrame):
         dialog.resizable(False, False)
         dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
-        dialog.configure(fg_color="#121320")
+        dialog.configure(fg_color="#111222")
         dialog.geometry(f"+{self.winfo_toplevel().winfo_x() + 200}+{self.winfo_toplevel().winfo_y() + 180}")
 
         ctk.CTkLabel(
@@ -748,7 +741,7 @@ class SoundboardView(ctk.CTkFrame):
             text_color="#00f0ff"
         ).pack(pady=(18, 10))
 
-        name_entry = ctk.CTkEntry(dialog, placeholder_text="New name", width=280, height=35, fg_color="#0b0c10", border_color="#1f2833")
+        name_entry = ctk.CTkEntry(dialog, placeholder_text="New name", width=280, height=35, fg_color="#04050a", border_color="#1a1b35")
         name_entry.pack(pady=6)
         name_entry.insert(0, sound["name"])
         name_entry.focus()
@@ -764,7 +757,7 @@ class SoundboardView(ctk.CTkFrame):
 
         ctk.CTkButton(
             dialog, text="Rename",
-            fg_color="#00f0ff", text_color="#0b0c10", hover_color="#00b8cc",
+            fg_color="#00f0ff", text_color="#04050a", hover_color="#00b8cc",
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             command=save
         ).pack(pady=10)
@@ -779,7 +772,7 @@ class SoundboardView(ctk.CTkFrame):
         dialog.resizable(False, False)
         dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
-        dialog.configure(fg_color="#121320")
+        dialog.configure(fg_color="#111222")
         dialog.geometry(f"+{self.winfo_toplevel().winfo_x() + 200}+{self.winfo_toplevel().winfo_y() + 150}")
 
         ctk.CTkLabel(
@@ -789,7 +782,6 @@ class SoundboardView(ctk.CTkFrame):
             text_color="#00f0ff"
         ).pack(pady=(18, 6))
 
-        # Duration info row
         dur = sound.get("duration", 0.0) or 0.0
         dur_str = f"{int(dur)//60}:{int(dur)%60:02d}" if dur > 0 else "unknown"
         _, ext = os.path.splitext(sound.get("file_path", ""))
@@ -818,10 +810,10 @@ class SoundboardView(ctk.CTkFrame):
             values=board_names if board_names else ["(no other boards)"],
             variable=board_var,
             width=280,
-            fg_color="#1a1c30",
+            fg_color="#04050a",
             button_color="#bc00dd",
             button_hover_color="#8c00aa",
-            dropdown_fg_color="#121320"
+            dropdown_fg_color="#111222"
         )
         board_menu.pack(pady=6)
 
@@ -856,14 +848,13 @@ class SoundboardView(ctk.CTkFrame):
         rename_btn = ctk.CTkButton(
             action_row, text="Rename...",
             width=135, height=32,
-            fg_color="#1a1c30", hover_color="#bc00dd", text_color="#edf2f4",
-            border_color="#1f2833", border_width=1,
+            fg_color="#04050a", hover_color="#bc00dd", text_color="#edf2f4",
+            border_color="#1a1b35", border_width=1,
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             command=rename
         )
         rename_btn.pack(side="left", padx=(0, 10))
 
-        # Delete
         def delete():
             confirm = messagebox.askyesno(
                 "Confirm Delete",
@@ -878,7 +869,7 @@ class SoundboardView(ctk.CTkFrame):
         delete_btn = ctk.CTkButton(
             action_row, text="Delete",
             width=135, height=32,
-            fg_color="#1a1c30", text_color="#ff0055", hover_color="#ff0055",
+            fg_color="#04050a", text_color="#ff0055", hover_color="#ff0055",
             border_color="#ff0055", border_width=1,
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             command=delete
@@ -921,8 +912,8 @@ class SoundboardView(ctk.CTkFrame):
         progress_win.resizable(False, False)
         progress_win.transient(self.winfo_toplevel())
         progress_win.grab_set()
+        progress_win.configure(fg_color="#111222")
         
-        # Center progress win
         parent_x = self.winfo_toplevel().winfo_x()
         parent_y = self.winfo_toplevel().winfo_y()
         parent_w = self.winfo_toplevel().winfo_width()
@@ -957,5 +948,3 @@ class SoundboardView(ctk.CTkFrame):
             self.after(0, on_complete)
 
         threading.Thread(target=run_import, daemon=True).start()
-
-

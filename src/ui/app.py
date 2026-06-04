@@ -33,7 +33,7 @@ class ErosSoundXApp(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
 
         # 1. Left Navigation Sidebar
-        self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color="#0b0c10")
+        self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color="#04050a")
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         self.sidebar_frame.grid_rowconfigure(5, weight=1) # Spacer row
 
@@ -41,19 +41,19 @@ class ErosSoundXApp(ctk.CTk):
         self.logo_label = ctk.CTkLabel(
             self.sidebar_frame, 
             text="ErosSoundX", 
-            font=ctk.CTkFont(family="Segoe UI", size=22, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"),
             text_color="#00f0ff"
         )
-        self.logo_label.pack(pady=(30, 20), padx=20)
+        self.logo_label.pack(pady=(35, 25), padx=20)
 
         # Navigation Buttons
         self.nav_buttons = {}
         
-        self.create_nav_button("dashboard", "Dashboard", self.logo_label)
-        self.create_nav_button("soundboard", "Soundboards", list(self.nav_buttons.values())[-1])
-        self.create_nav_button("macros", "Sound Macros", list(self.nav_buttons.values())[-1])
-        self.create_nav_button("auth", "Authentication", list(self.nav_buttons.values())[-1])
-        self.create_nav_button("settings", "Settings", list(self.nav_buttons.values())[-1])
+        self.create_nav_button("dashboard", "📟 Dashboard", self.logo_label)
+        self.create_nav_button("soundboard", "🎵 Soundboards", list(self.nav_buttons.values())[-1])
+        self.create_nav_button("macros", "🎛️ Macros", list(self.nav_buttons.values())[-1])
+        self.create_nav_button("auth", "👤 Profile", list(self.nav_buttons.values())[-1])
+        self.create_nav_button("settings", "⚙️ Settings", list(self.nav_buttons.values())[-1])
 
         # Bottom Connection Status Bar inside Sidebar
         self.status_container = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
@@ -63,10 +63,12 @@ class ErosSoundXApp(ctk.CTk):
         self.stop_all_btn = ctk.CTkButton(
             self.sidebar_frame,
             text="■ STOP ALL AUDIO",
-            height=35,
+            height=38,
             fg_color="#ff0055",
-            text_color="#0b0c10",
-            hover_color="#d00045",
+            text_color="#ffffff",
+            hover_color="#cc0044",
+            border_color="#ff0055",
+            border_width=1,
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             command=self.panic_stop
         )
@@ -102,7 +104,7 @@ class ErosSoundXApp(ctk.CTk):
 
 
         # 2. Right Content Frame
-        self.content_frame = ctk.CTkFrame(self, fg_color="#161726", corner_radius=0)
+        self.content_frame = ctk.CTkFrame(self, fg_color="#08090f", corner_radius=0)
         self.content_frame.grid(row=0, column=1, sticky="nsew")
 
         # Initialize subviews (lazy loaded on select_tab)
@@ -125,7 +127,8 @@ class ErosSoundXApp(ctk.CTk):
             height=40,
             fg_color="transparent",
             text_color="#edf2f4",
-            hover_color="#121320",
+            hover_color="#111222",
+            border_width=0,
             anchor="w",
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             command=lambda n=name: self.select_tab(n)
@@ -152,9 +155,9 @@ class ErosSoundXApp(ctk.CTk):
         # Update button highlights
         for name, btn in self.nav_buttons.items():
             if name == tab_name:
-                btn.configure(fg_color="#121320", text_color="#00f0ff")
+                btn.configure(fg_color="#111222", text_color="#00f0ff", border_color="#00f0ff", border_width=1)
             else:
-                btn.configure(fg_color="transparent", text_color="#edf2f4")
+                btn.configure(fg_color="transparent", text_color="#edf2f4", border_width=0)
 
         # Instantiate view if not loaded
         if tab_name not in self.views:
@@ -198,15 +201,17 @@ class ErosSoundXApp(ctk.CTk):
                 if len(email_alias) > 12:
                     email_alias = email_alias[:10] + ".."
                 display_name = email_alias
-            self.nav_buttons["auth"].configure(text=f"Profile ({display_name})")
+            self.nav_buttons["auth"].configure(text=f"👤 Profile ({display_name})")
         else:
-            self.nav_buttons["auth"].configure(text="Authentication")
+            self.nav_buttons["auth"].configure(text="👤 Profile")
 
         # Propagate auth updates to active views
         if "dashboard" in self.views:
             self.views["dashboard"].update_view()
         if "settings" in self.views:
             self.views["settings"].update_view()
+        if "auth" in self.views:
+            self.views["auth"].update_view()
 
 
     def check_connections(self):

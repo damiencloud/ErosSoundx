@@ -48,11 +48,22 @@ class SettingsView(ctk.CTkFrame):
         except Exception as e:
             logger.debug(f"Failed to register sync manager observer in settings: {e}")
 
+        # Register level listener with audio engine
+        try:
+            from src.audio.audio_engine import audio_engine
+            audio_engine.register_level_listener(self.on_levels_received)
+        except Exception as e:
+            logger.debug(f"Failed to register level listener: {e}")
+
 
     def draw_appearance_settings(self):
         # Appearance Card
-        card = ctk.CTkFrame(self.scroll_frame, fg_color="#121320", corner_radius=12, border_color="#1f2833", border_width=1)
+        card = ctk.CTkFrame(self.scroll_frame, fg_color="#111222", corner_radius=12, border_color="#1a1b35", border_width=1)
         card.pack(fill="x", pady=10)
+
+        # Bind hover border animation
+        card.bind("<Enter>", lambda e, c=card: c.configure(border_color="#bc00dd"))
+        card.bind("<Leave>", lambda e, c=card: c.configure(border_color="#1a1b35"))
 
         label = ctk.CTkLabel(card, text="Appearance & Visuals", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"), text_color="#00f0ff")
         label.pack(pady=(12, 8), padx=20, anchor="w")
@@ -68,10 +79,13 @@ class SettingsView(ctk.CTkFrame):
             theme_frame,
             values=["Dark", "Light", "System"],
             command=self.change_theme,
-            fg_color="#1a1c30",
+            fg_color="#04050a",
             button_color="#bc00dd",
             button_hover_color="#8c00aa",
-            dropdown_fg_color="#121320"
+            dropdown_fg_color="#111222",
+            dropdown_hover_color="#bc00dd",
+            dropdown_text_color="#ffffff",
+            text_color="#ffffff"
         )
         self.theme_dropdown.set(current_theme)
         self.theme_dropdown.pack(side="left")
@@ -126,22 +140,29 @@ class SettingsView(ctk.CTkFrame):
 
     def draw_audio_settings(self):
         # Audio Playback Master Volume Card
-        card = ctk.CTkFrame(self.scroll_frame, fg_color="#121320", corner_radius=12, border_color="#1f2833", border_width=1)
+        card = ctk.CTkFrame(self.scroll_frame, fg_color="#111222", corner_radius=12, border_color="#1a1b35", border_width=1)
         card.pack(fill="x", pady=10)
 
-        label = ctk.CTkLabel(card, text="Audio Playback", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"), text_color="#00f0ff")
+        # Bind hover border animation
+        card.bind("<Enter>", lambda e, c=card: c.configure(border_color="#00f0ff"))
+        card.bind("<Leave>", lambda e, c=card: c.configure(border_color="#1a1b35"))
+
+        label = ctk.CTkLabel(card, text="Audio Devices & Routing Mixer", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"), text_color="#00f0ff")
         label.pack(pady=(12, 5), padx=20, anchor="w")
 
-        desc_label = ctk.CTkLabel(card, text="Adjust master volume output dynamically.", font=ctk.CTkFont(family="Segoe UI", size=11), text_color="#8e9aaf")
-        desc_label.pack(pady=(0, 10), padx=20, anchor="w")
+        desc_label = ctk.CTkLabel(card, text="Select physical microphone/speakers, route soundboard, and monitor live levels.", font=ctk.CTkFont(family="Segoe UI", size=11), text_color="#8e9aaf")
+        desc_label.pack(pady=(0, 15), padx=20, anchor="w")
 
+        from src.audio.audio_engine import audio_engine
+        devices = audio_engine.get_available_devices()
+        mics = audio_engine.get_available_microphones()
+        
+        # 1. Master Volume Section (Monitoring output)
         vol_frame = ctk.CTkFrame(card, fg_color="transparent")
         vol_frame.pack(fill="x", padx=20, pady=(0, 15))
 
-        from src.audio.audio_engine import audio_engine
         current_vol = audio_engine.master_volume
-
-        self.master_vol_label = ctk.CTkLabel(vol_frame, text=f"Master Volume: {int(current_vol * 100)}%", font=ctk.CTkFont(family="Segoe UI", size=13))
+        self.master_vol_label = ctk.CTkLabel(vol_frame, text=f"Master Volume (Local Speakers): {int(current_vol * 100)}%", font=ctk.CTkFont(family="Segoe UI", size=13))
         self.master_vol_label.pack(anchor="w", pady=(0, 4))
 
         vol_slider = ctk.CTkSlider(
@@ -157,20 +178,396 @@ class SettingsView(ctk.CTkFrame):
         vol_slider.set(current_vol)
         vol_slider.pack(fill="x")
 
+        # Divider
+        divider = ctk.CTkFrame(card, height=1, fg_color="#1a1b35")
+        divider.pack(fill="x", padx=20, pady=10)
+
+        # 2. Output Device Selection Grid
+        grid_frame = ctk.CTkFrame(card, fg_color="transparent")
+        grid_frame.pack(fill="x", padx=20, pady=(0, 10))
+        grid_frame.columnconfigure(1, weight=1)
+
+        # Primary Output Dropdown
+        primary_label = ctk.CTkLabel(grid_frame, text="Primary Output (What you hear):", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color="#edf2f4")
+        primary_label.grid(row=0, column=0, sticky="w", pady=5, padx=(0, 20))
+
+        primary_options = ["Default"] + devices
+        current_primary = config_manager.get("primary_audio_device", "Default")
+        if current_primary not in primary_options:
+            primary_options.append(current_primary)
+
+        self.primary_device_dropdown = ctk.CTkOptionMenu(
+            grid_frame,
+            values=primary_options,
+            command=self.change_primary_device,
+            fg_color="#04050a",
+            button_color="#bc00dd",
+            button_hover_color="#8c00aa",
+            dropdown_fg_color="#111222",
+            dropdown_hover_color="#bc00dd",
+            dropdown_text_color="#ffffff",
+            text_color="#ffffff",
+            width=280
+        )
+        self.primary_device_dropdown.set(current_primary)
+        self.primary_device_dropdown.grid(row=0, column=1, sticky="w", pady=5)
+
+        # Physical Microphone Dropdown
+        mic_label = ctk.CTkLabel(grid_frame, text="Physical Microphone (Your Voice):", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color="#edf2f4")
+        mic_label.grid(row=1, column=0, sticky="w", pady=5, padx=(0, 20))
+
+        mic_options = ["Default"] + mics
+        current_mic = config_manager.get("mic_device", "Default")
+        if current_mic not in mic_options:
+            mic_options.append(current_mic)
+
+        self.mic_device_dropdown = ctk.CTkOptionMenu(
+            grid_frame,
+            values=mic_options,
+            command=self.change_mic_device,
+            fg_color="#04050a",
+            button_color="#bc00dd",
+            button_hover_color="#8c00aa",
+            dropdown_fg_color="#111222",
+            dropdown_hover_color="#bc00dd",
+            dropdown_text_color="#ffffff",
+            text_color="#ffffff",
+            width=280
+        )
+        self.mic_device_dropdown.set(current_mic)
+        self.mic_device_dropdown.grid(row=1, column=1, sticky="w", pady=5)
+
+        # Virtual Mic Output Device Dropdown
+        vmic_label = ctk.CTkLabel(grid_frame, text="Virtual Mic Device (VB-CABLE Input):", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color="#edf2f4")
+        vmic_label.grid(row=2, column=0, sticky="w", pady=5, padx=(0, 20))
+
+        current_vmic = config_manager.get("virtual_mic_device", "")
+        # Auto detect default virtual mic if empty
+        if not current_vmic:
+            for dev in devices:
+                if "cable" in dev.lower():
+                    current_vmic = dev
+                    break
+
+        vmic_options = devices.copy()
+        if current_vmic and current_vmic not in vmic_options:
+            vmic_options.append(current_vmic)
+        if not vmic_options:
+            vmic_options = ["None Detected"]
+
+        self.vmic_device_dropdown = ctk.CTkOptionMenu(
+            grid_frame,
+            values=vmic_options,
+            command=self.change_virtual_mic_device,
+            fg_color="#04050a",
+            button_color="#bc00dd",
+            button_hover_color="#8c00aa",
+            dropdown_fg_color="#111222",
+            dropdown_hover_color="#bc00dd",
+            dropdown_text_color="#ffffff",
+            text_color="#ffffff",
+            width=280
+        )
+        if current_vmic:
+            self.vmic_device_dropdown.set(current_vmic)
+            config_manager.set("virtual_mic_device", current_vmic)
+        else:
+            self.vmic_device_dropdown.set(vmic_options[0])
+        self.vmic_device_dropdown.grid(row=2, column=1, sticky="w", pady=5)
+
+        # Virtual Mic Switch / Toggle
+        route_label = ctk.CTkLabel(grid_frame, text="Virtual Mic Routing Status:", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color="#edf2f4")
+        route_label.grid(row=3, column=0, sticky="w", pady=10, padx=(0, 20))
+
+        self.route_var = ctk.BooleanVar(value=config_manager.get("virtual_mic_enabled", False))
+        self.route_switch = ctk.CTkSwitch(
+            grid_frame,
+            text="Enable Voice & Soundboard Multiplexing",
+            variable=self.route_var,
+            command=self.toggle_virtual_mic,
+            progress_color="#00f0ff",
+            button_color="#bc00dd",
+            button_hover_color="#8c00aa",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color="#edf2f4"
+        )
+        self.route_switch.grid(row=3, column=1, sticky="w", pady=10)
+
+        # Divider
+        divider2 = ctk.CTkFrame(card, height=1, fg_color="#1a1b35")
+        divider2.pack(fill="x", padx=20, pady=10)
+
+        # 3. Independent Routing Volume & Mute Controls
+        mix_frame = ctk.CTkFrame(card, fg_color="transparent")
+        mix_frame.pack(fill="x", padx=20, pady=(0, 10))
+        mix_frame.columnconfigure(1, weight=1)
+
+        # Microphone routing volume
+        mic_vol_label = ctk.CTkLabel(mix_frame, text="Microphone Volume:", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color="#edf2f4")
+        mic_vol_label.grid(row=0, column=0, sticky="w", pady=5, padx=(0, 20))
+
+        mic_slider_frame = ctk.CTkFrame(mix_frame, fg_color="transparent")
+        mic_slider_frame.grid(row=0, column=1, sticky="ew", pady=5)
+        mic_slider_frame.columnconfigure(0, weight=1)
+
+        self.mic_vol_slider = ctk.CTkSlider(
+            mic_slider_frame,
+            from_=0.0,
+            to=1.0,
+            number_of_steps=20,
+            button_color="#00f0ff",
+            progress_color="#bc00dd",
+            command=self.change_mic_volume
+        )
+        self.mic_vol_slider.set(config_manager.get("mic_volume", 1.0))
+        self.mic_vol_slider.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+
+        self.mic_mute_var = ctk.BooleanVar(value=config_manager.get("mic_muted", False))
+        self.mic_mute_switch = ctk.CTkSwitch(
+            mic_slider_frame,
+            text="Mute Mic",
+            variable=self.mic_mute_var,
+            command=self.toggle_mic_mute,
+            progress_color="#ff0055",
+            font=ctk.CTkFont(family="Segoe UI", size=11)
+        )
+        self.mic_mute_switch.grid(row=0, column=1, sticky="w")
+
+        # Soundboard routing volume
+        sbd_vol_label = ctk.CTkLabel(mix_frame, text="Soundboard Route Vol:", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color="#edf2f4")
+        sbd_vol_label.grid(row=1, column=0, sticky="w", pady=5, padx=(0, 20))
+
+        sbd_slider_frame = ctk.CTkFrame(mix_frame, fg_color="transparent")
+        sbd_slider_frame.grid(row=1, column=1, sticky="ew", pady=5)
+        sbd_slider_frame.columnconfigure(0, weight=1)
+
+        self.sbd_vol_slider = ctk.CTkSlider(
+            sbd_slider_frame,
+            from_=0.0,
+            to=1.0,
+            number_of_steps=20,
+            button_color="#00f0ff",
+            progress_color="#bc00dd",
+            command=self.change_sbd_volume
+        )
+        self.sbd_vol_slider.set(config_manager.get("soundboard_playback_volume", 1.0))
+        self.sbd_vol_slider.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+
+        self.sbd_mute_var = ctk.BooleanVar(value=config_manager.get("soundboard_muted", False))
+        self.sbd_mute_switch = ctk.CTkSwitch(
+            sbd_slider_frame,
+            text="Mute Soundboard",
+            variable=self.sbd_mute_var,
+            command=self.toggle_sbd_mute,
+            progress_color="#ff0055",
+            font=ctk.CTkFont(family="Segoe UI", size=11)
+        )
+        self.sbd_mute_switch.grid(row=0, column=1, sticky="w")
+
+        # Divider
+        divider3 = ctk.CTkFrame(card, height=1, fg_color="#1a1b35")
+        divider3.pack(fill="x", padx=20, pady=10)
+
+        # 4. Live Audio Level Meters
+        meters_frame = ctk.CTkFrame(card, fg_color="transparent")
+        meters_frame.pack(fill="x", padx=20, pady=(0, 10))
+        meters_frame.columnconfigure(0, weight=1)
+        meters_frame.columnconfigure(1, weight=1)
+
+        # Mic Level Meter
+        mic_meter_frame = ctk.CTkFrame(meters_frame, fg_color="transparent")
+        mic_meter_frame.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+        
+        mic_meter_lbl = ctk.CTkLabel(mic_meter_frame, text="Microphone Live Level:", font=ctk.CTkFont(family="Segoe UI", size=11), text_color="#8e9aaf")
+        mic_meter_lbl.pack(anchor="w")
+        
+        self.mic_level_bar = ctk.CTkProgressBar(mic_meter_frame, height=8, progress_color="#00f0ff", fg_color="#04050a")
+        self.mic_level_bar.set(0.0)
+        self.mic_level_bar.pack(fill="x", pady=2)
+
+        # Soundboard Level Meter
+        sbd_meter_frame = ctk.CTkFrame(meters_frame, fg_color="transparent")
+        sbd_meter_frame.grid(row=0, column=1, sticky="ew", padx=(10, 0))
+        
+        sbd_meter_lbl = ctk.CTkLabel(sbd_meter_frame, text="Soundboard Live Level:", font=ctk.CTkFont(family="Segoe UI", size=11), text_color="#8e9aaf")
+        sbd_meter_lbl.pack(anchor="w")
+        
+        self.sbd_level_bar = ctk.CTkProgressBar(sbd_meter_frame, height=8, progress_color="#bc00dd", fg_color="#04050a")
+        self.sbd_level_bar.set(0.0)
+        self.sbd_level_bar.pack(fill="x", pady=2)
+
+        # Status and Test Buttons
+        status_frame = ctk.CTkFrame(card, fg_color="transparent")
+        status_frame.pack(fill="x", padx=20, pady=(0, 15))
+
+        self.vmic_status_lbl = ctk.CTkLabel(
+            status_frame,
+            text="● Virtual Mic: Checking...",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold")
+        )
+        self.vmic_status_lbl.pack(side="left", padx=(0, 20))
+
+        self.latency_lbl = ctk.CTkLabel(
+            status_frame,
+            text="Buffer Latency: -- ms",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color="#8e9aaf"
+        )
+        self.latency_lbl.pack(side="left", padx=(0, 20))
+
+        test_btn = ctk.CTkButton(
+            status_frame,
+            text="🔊 Test Audio Routing",
+            fg_color="#bc00dd",
+            text_color="#ffffff",
+            hover_color="#8c00aa",
+            width=160,
+            height=30,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            command=self.test_audio_devices
+        )
+        test_btn.pack(side="left")
+
+        # 5. Warnings and Setup Instructions
+        self.diagnostics_box = ctk.CTkFrame(card, fg_color="#04050a", corner_radius=8, border_color="#ffb703", border_width=1)
+        self.diagnostics_box.pack(fill="x", padx=20, pady=(0, 15))
+
+        cable_detected = any("cable" in d.lower() for d in devices)
+        
+        self.diag_lbl = ctk.CTkLabel(
+            self.diagnostics_box,
+            text="⚠️ VB-CABLE Virtual Audio Device not detected on your system.",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            text_color="#ffb703"
+        )
+        self.diag_lbl.pack(padx=15, pady=8, anchor="w")
+
+        self.instruction_lbl = ctk.CTkLabel(
+            self.diagnostics_box,
+            text=(
+                "How to Setup Virtual Microphone Routing:\n"
+                "1. Download and install VB-CABLE driver from https://vb-audio.com/Cable/ (restart your PC).\n"
+                "2. In ErosSoundX Settings (above), select 'CABLE Input' as your Virtual Mic Device and enable Routing.\n"
+                "3. Open Discord, TeamSpeak, or Valorant settings, and set your Input Device (Microphone) to 'CABLE Output'.\n"
+                "4. Keep your Output Device (Speakers/Headphones) set normally so you can hear your friends."
+            ),
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color="#edf2f4",
+            justify="left",
+            anchor="w"
+        )
+        self.instruction_lbl.pack(padx=15, pady=(0, 10), anchor="w")
+
+        if cable_detected:
+            self.diagnostics_box.configure(border_color="#03dac6")
+            self.diag_lbl.configure(text="✔ VB-CABLE Virtual Device Detected successfully.", text_color="#03dac6")
+
+        self.update_vmic_status_label()
+
     def change_master_volume(self, val):
         from src.audio.audio_engine import audio_engine
         audio_engine.set_master_volume(val)
-        self.master_vol_label.configure(text=f"Master Volume: {int(float(val) * 100)}%")
+        self.master_vol_label.configure(text=f"Master Volume (Local Speakers): {int(float(val) * 100)}%")
         try:
             from src.sync.sync_manager import sync_manager
             sync_manager.trigger_sync()
         except Exception as e:
             logger.debug(f"Failed to trigger sync: {e}")
 
+    def change_primary_device(self, device):
+        from src.audio.audio_engine import audio_engine
+        logger.info(f"Primary output device changed to: {device}")
+        audio_engine.change_primary_device(device)
+        self.update_vmic_status_label()
+
+    def change_mic_device(self, device):
+        config_manager.set("mic_device", device)
+        logger.info(f"Physical Mic device changed to: {device}")
+        from src.audio.audio_engine import audio_engine
+        audio_engine.reload_virtual_mic()
+        self.update_vmic_status_label()
+
+    def toggle_virtual_mic(self):
+        val = self.route_var.get()
+        config_manager.set("virtual_mic_enabled", val)
+        logger.info(f"Virtual Mic Routing toggled to: {val}")
+        
+        from src.audio.audio_engine import audio_engine
+        audio_engine.reload_virtual_mic()
+        self.update_vmic_status_label()
+
+    def change_virtual_mic_device(self, device):
+        config_manager.set("virtual_mic_device", device)
+        logger.info(f"Virtual Mic device changed to: {device}")
+        
+        from src.audio.audio_engine import audio_engine
+        audio_engine.reload_virtual_mic()
+        self.update_vmic_status_label()
+
+    def change_mic_volume(self, val):
+        from src.audio.audio_engine import audio_engine
+        audio_engine.set_mic_volume(val)
+
+    def toggle_mic_mute(self):
+        val = self.mic_mute_var.get()
+        from src.audio.audio_engine import audio_engine
+        audio_engine.set_mic_mute(val)
+
+    def change_sbd_volume(self, val):
+        from src.audio.audio_engine import audio_engine
+        audio_engine.set_virtual_mic_sbd_volume(val)
+
+    def toggle_sbd_mute(self):
+        val = self.sbd_mute_var.get()
+        from src.audio.audio_engine import audio_engine
+        audio_engine.set_virtual_mic_sbd_mute(val)
+
+    def test_audio_devices(self):
+        from src.audio.audio_engine import audio_engine
+        logger.info("Triggering audio device routing verification test.")
+        audio_engine.test_device_routing()
+
+    def on_levels_received(self, mic_level, sbd_level, latency_ms):
+        def update_ui():
+            if not hasattr(self, "mic_level_bar") or not self.mic_level_bar.winfo_exists():
+                return
+            # Square root scaling maps RMS level values (0.0 to 1.0) to a more visible range
+            self.mic_level_bar.set(min(1.0, mic_level ** 0.5))
+            self.sbd_level_bar.set(min(1.0, sbd_level ** 0.5))
+            self.latency_lbl.configure(text=f"Buffer Latency: {latency_ms:.1f} ms")
+            
+        if self.winfo_exists():
+            self.after(0, update_ui)
+
+    def update_vmic_status_label(self):
+        from src.audio.audio_engine import audio_engine
+        enabled = config_manager.get("virtual_mic_enabled", False)
+        device = config_manager.get("virtual_mic_device", "")
+        devices = audio_engine.get_available_devices()
+        cable_installed = any("cable" in d.lower() for d in devices)
+
+        if not hasattr(self, "vmic_status_lbl") or not self.vmic_status_lbl.winfo_exists():
+            return
+
+        if not cable_installed:
+            self.vmic_status_lbl.configure(text="● Virtual Mic: Cable Not Installed", text_color="#cf6679")
+        elif not enabled:
+            self.vmic_status_lbl.configure(text="● Virtual Mic: Routing Inactive (Disabled)", text_color="#8e9aaf")
+        elif not device:
+            self.vmic_status_lbl.configure(text="● Virtual Mic: Device Not Selected", text_color="#ffb703")
+        elif audio_engine.subprocess_handle and audio_engine.subprocess_handle.poll() is None:
+            self.vmic_status_lbl.configure(text="● Virtual Mic: Active & Routing", text_color="#03dac6")
+        else:
+            self.vmic_status_lbl.configure(text="● Virtual Mic: Routing Error (Off)", text_color="#cf6679")
+
     def draw_supabase_settings(self):
         # Supabase Connection Card (Cyberpunk styled)
-        card = ctk.CTkFrame(self.scroll_frame, fg_color="#121320", corner_radius=12, border_color="#1f2833", border_width=1)
+        card = ctk.CTkFrame(self.scroll_frame, fg_color="#111222", corner_radius=12, border_color="#1a1b35", border_width=1)
         card.pack(fill="x", pady=10)
+
+        # Bind hover border animation
+        card.bind("<Enter>", lambda e, c=card: c.configure(border_color="#bc00dd"))
+        card.bind("<Leave>", lambda e, c=card: c.configure(border_color="#1a1b35"))
 
         label = ctk.CTkLabel(card, text="Supabase Integration", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"), text_color="#00f0ff")
         label.pack(pady=(12, 5), padx=20, anchor="w")
@@ -182,7 +579,7 @@ class SettingsView(ctk.CTkFrame):
         url_label = ctk.CTkLabel(card, text="Supabase URL:", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color="#edf2f4")
         url_label.pack(padx=20, anchor="w")
         
-        self.url_entry = ctk.CTkEntry(card, placeholder_text="https://your-project.supabase.co", width=450, height=35, corner_radius=6, fg_color="#0b0c10", border_color="#1f2833")
+        self.url_entry = ctk.CTkEntry(card, placeholder_text="https://your-project.supabase.co", width=450, height=35, corner_radius=6, fg_color="#04050a", border_color="#1a1b35")
         self.url_entry.pack(pady=(2, 10), padx=20, anchor="w")
         
         # Mask if streamer mode is active
@@ -196,7 +593,7 @@ class SettingsView(ctk.CTkFrame):
         key_label = ctk.CTkLabel(card, text="Supabase Anon Key:", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color="#edf2f4")
         key_label.pack(padx=20, anchor="w")
         
-        self.key_entry = ctk.CTkEntry(card, placeholder_text="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", show="*", width=450, height=35, corner_radius=6, fg_color="#0b0c10", border_color="#1f2833")
+        self.key_entry = ctk.CTkEntry(card, placeholder_text="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", show="*", width=450, height=35, corner_radius=6, fg_color="#04050a", border_color="#1a1b35")
         self.key_entry.pack(pady=(2, 12), padx=20, anchor="w")
         
         if streamer_active:
@@ -232,7 +629,7 @@ class SettingsView(ctk.CTkFrame):
             action_frame,
             text="Save Settings",
             fg_color="#00f0ff",
-            text_color="#0b0c10",
+            text_color="#04050a",
             hover_color="#00b8cc",
             width=110,
             height=32,
@@ -326,8 +723,12 @@ class SettingsView(ctk.CTkFrame):
 
     def draw_system_settings(self):
         # Database reset Card
-        card = ctk.CTkFrame(self.scroll_frame, fg_color="#121320", corner_radius=12, border_color="#1f2833", border_width=1)
+        card = ctk.CTkFrame(self.scroll_frame, fg_color="#111222", corner_radius=12, border_color="#1a1b35", border_width=1)
         card.pack(fill="x", pady=10)
+
+        # Bind hover border animation
+        card.bind("<Enter>", lambda e, c=card: c.configure(border_color="#ff0055"))
+        card.bind("<Leave>", lambda e, c=card: c.configure(border_color="#1a1b35"))
 
         label = ctk.CTkLabel(card, text="Cache Maintenance", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"), text_color="#00f0ff")
         label.pack(pady=(12, 5), padx=20, anchor="w")
@@ -337,10 +738,10 @@ class SettingsView(ctk.CTkFrame):
 
         reset_btn = ctk.CTkButton(
             card,
-            text="Clear Session Cache",
-            fg_color="#1a1c30",
+            text="🗑️ Clear Session Cache",
+            fg_color="transparent",
             text_color="#ff0055",
-            hover_color="#ff0055",
+            hover_color="#330011",
             border_color="#ff0055",
             border_width=1,
             height=32,
@@ -364,8 +765,12 @@ class SettingsView(ctk.CTkFrame):
 
     def draw_log_viewer(self):
         # Log viewer Card
-        card = ctk.CTkFrame(self.scroll_frame, fg_color="#121320", corner_radius=12, border_color="#1f2833", border_width=1)
+        card = ctk.CTkFrame(self.scroll_frame, fg_color="#111222", corner_radius=12, border_color="#1a1b35", border_width=1)
         card.pack(fill="x", pady=10)
+
+        # Bind hover border animation
+        card.bind("<Enter>", lambda e, c=card: c.configure(border_color="#bc00dd"))
+        card.bind("<Leave>", lambda e, c=card: c.configure(border_color="#1a1b35"))
 
         title_frame = ctk.CTkFrame(card, fg_color="transparent")
         title_frame.pack(fill="x", padx=20, pady=(12, 8))
@@ -375,29 +780,29 @@ class SettingsView(ctk.CTkFrame):
 
         refresh_btn = ctk.CTkButton(
             title_frame,
-            text="Refresh",
-            width=70,
+            text="🔄 Refresh",
+            width=90,
             height=24,
-            fg_color="#1a1c30",
+            fg_color="transparent",
             hover_color="#bc00dd",
-            text_color="#edf2f4",
-            border_color="#1f2833",
+            text_color="#00f0ff",
+            border_color="#00f0ff",
             border_width=1,
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
             command=self.load_logs_content
         )
         refresh_btn.pack(side="right")
 
-        # Scrollable text widget for logs
+        # Scrollable text widget for logs styled like a hacker terminal
         self.logs_textbox = ctk.CTkTextbox(
             card,
             width=500,
             height=180,
             font=ctk.CTkFont(family="Consolas", size=11),
-            fg_color="#0b0c10",
-            text_color="#e0aaff",
+            fg_color="#04050a",
+            text_color="#00f0ff",
             border_width=1,
-            border_color="#1f2833"
+            border_color="#1a1b35"
         )
         self.logs_textbox.pack(fill="x", padx=20, pady=(0, 15))
         self.load_logs_content()
@@ -428,8 +833,12 @@ class SettingsView(ctk.CTkFrame):
 
     def draw_hotkey_settings(self):
         # Global Hotkey Settings Card
-        card = ctk.CTkFrame(self.scroll_frame, fg_color="#121320", corner_radius=12, border_color="#1f2833", border_width=1)
+        card = ctk.CTkFrame(self.scroll_frame, fg_color="#111222", corner_radius=12, border_color="#1a1b35", border_width=1)
         card.pack(fill="x", pady=10)
+
+        # Bind hover border animation
+        card.bind("<Enter>", lambda e, c=card: c.configure(border_color="#00f0ff"))
+        card.bind("<Leave>", lambda e, c=card: c.configure(border_color="#1a1b35"))
 
         label = ctk.CTkLabel(card, text="Global Hotkeys", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"), text_color="#00f0ff")
         label.pack(pady=(12, 5), padx=20, anchor="w")
@@ -445,7 +854,7 @@ class SettingsView(ctk.CTkFrame):
         panic_lbl.pack(side="left", padx=(0, 10))
 
         current_panic = config_manager.get("panic_hotkey", "Escape")
-        self.panic_entry = ctk.CTkEntry(panic_frame, width=150, height=30)
+        self.panic_entry = ctk.CTkEntry(panic_frame, width=150, height=30, fg_color="#04050a", border_color="#1a1b35")
         self.panic_entry.insert(0, current_panic)
         self.panic_entry.pack(side="left", padx=5)
 
@@ -455,7 +864,7 @@ class SettingsView(ctk.CTkFrame):
             width=80,
             height=30,
             fg_color="#00f0ff",
-            text_color="#0b0c10",
+            text_color="#04050a",
             hover_color="#00b8cc",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             command=self.save_panic_hotkey
@@ -470,7 +879,7 @@ class SettingsView(ctk.CTkFrame):
         binds_label.pack(pady=(15, 5), padx=20, anchor="w")
 
         # Scrollable panel or text box to display registered keys
-        self.active_binds_frame = ctk.CTkFrame(card, fg_color="#0b0c10", corner_radius=8, border_color="#1f2833", border_width=1)
+        self.active_binds_frame = ctk.CTkFrame(card, fg_color="#04050a", corner_radius=8, border_color="#1a1b35", border_width=1)
         self.active_binds_frame.pack(fill="x", padx=20, pady=(0, 15))
 
         self.populate_active_binds()
@@ -494,7 +903,7 @@ class SettingsView(ctk.CTkFrame):
         sound_header.pack(side="left", fill="x", expand=True)
 
         # Divider
-        divider = ctk.CTkFrame(self.active_binds_frame, height=1, fg_color="#1f2833")
+        divider = ctk.CTkFrame(self.active_binds_frame, height=1, fg_color="#1a1b35")
         divider.pack(fill="x", padx=5, pady=2)
 
         # List all bindings
@@ -578,6 +987,9 @@ class SettingsView(ctk.CTkFrame):
         if hasattr(self, "active_binds_frame"):
             self.populate_active_binds()
         
+        # Refresh virtual mic status label if present
+        self.update_vmic_status_label()
+        
         # Initialize sync status labels
         try:
             from src.sync.sync_manager import sync_manager
@@ -630,8 +1042,12 @@ class SettingsView(ctk.CTkFrame):
 
     def draw_qr_pairing_settings(self):
         # QR Pairing & Remote Card
-        card = ctk.CTkFrame(self.scroll_frame, fg_color="#121320", corner_radius=12, border_color="#1f2833", border_width=1)
+        card = ctk.CTkFrame(self.scroll_frame, fg_color="#111222", corner_radius=12, border_color="#1a1b35", border_width=1)
         card.pack(fill="x", pady=10)
+
+        # Bind hover border animation
+        card.bind("<Enter>", lambda e, c=card: c.configure(border_color="#bc00dd"))
+        card.bind("<Leave>", lambda e, c=card: c.configure(border_color="#1a1b35"))
 
         label = ctk.CTkLabel(card, text="Mobile Remote Control (QR Pairing)", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"), text_color="#00f0ff")
         label.pack(pady=(12, 5), padx=20, anchor="w")
@@ -644,7 +1060,7 @@ class SettingsView(ctk.CTkFrame):
         content_frame.pack(fill="x", padx=20, pady=(0, 15))
 
         # QR Code display area (Left)
-        self.qr_container = ctk.CTkFrame(content_frame, fg_color="#0b0c10", width=180, height=180, corner_radius=8, border_color="#1f2833", border_width=1)
+        self.qr_container = ctk.CTkFrame(content_frame, fg_color="#04050a", width=180, height=180, corner_radius=8, border_color="#1a1b35", border_width=1)
         self.qr_container.pack(side="left", padx=(0, 20))
         self.qr_container.pack_propagate(False)
 
@@ -694,7 +1110,7 @@ class SettingsView(ctk.CTkFrame):
         self.reveal_qr_btn = ctk.CTkButton(
             btn_frame,
             text="Reveal QR Code",
-            fg_color="#1a1c30",
+            fg_color="transparent",
             text_color="#00f0ff",
             hover_color="#bc00dd",
             border_color="#00f0ff",
@@ -739,7 +1155,7 @@ class SettingsView(ctk.CTkFrame):
             qr.make(fit=True)
 
             # Cyberpunk styling: neon cyan modules, dark back
-            img = qr.make_image(fill_color="#00f0ff", back_color="#121320").convert("RGB")
+            img = qr.make_image(fill_color="#00f0ff", back_color="#04050a").convert("RGB")
             img = img.resize((150, 150), Image.Resampling.LANCZOS)
 
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(150, 150))
@@ -800,8 +1216,12 @@ class SettingsView(ctk.CTkFrame):
 
     def draw_about_settings(self):
         # About Card
-        card = ctk.CTkFrame(self.scroll_frame, fg_color="#121320", corner_radius=12, border_color="#1f2833", border_width=1)
+        card = ctk.CTkFrame(self.scroll_frame, fg_color="#111222", corner_radius=12, border_color="#1a1b35", border_width=1)
         card.pack(fill="x", pady=10)
+
+        # Bind hover border animation
+        card.bind("<Enter>", lambda e, c=card: c.configure(border_color="#00f0ff"))
+        card.bind("<Leave>", lambda e, c=card: c.configure(border_color="#1a1b35"))
 
         label = ctk.CTkLabel(card, text="About ErosSoundX", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"), text_color="#00f0ff")
         label.pack(pady=(12, 5), padx=20, anchor="w")

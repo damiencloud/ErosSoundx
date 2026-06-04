@@ -87,6 +87,26 @@ class TestAudioEngine(unittest.TestCase):
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
+    def test_device_listing_and_defaults(self):
+        from src.config import config_manager
+        # Verify that get_available_devices returns a list
+        devices = audio_engine.get_available_devices()
+        self.assertIsInstance(devices, list)
+        
+        # Verify that get_available_microphones returns a list
+        mics = audio_engine.get_available_microphones()
+        self.assertIsInstance(mics, list)
+        
+        # Verify default config settings
+        self.assertEqual(config_manager.get("primary_audio_device"), "Default")
+        self.assertFalse(config_manager.get("virtual_mic_enabled"))
+        self.assertEqual(config_manager.get("virtual_mic_device"), "")
+        self.assertEqual(config_manager.get("mic_device"), "Default")
+        self.assertEqual(config_manager.get("mic_volume"), 1.0)
+        self.assertFalse(config_manager.get("mic_muted"))
+        self.assertEqual(config_manager.get("soundboard_playback_volume"), 1.0)
+        self.assertFalse(config_manager.get("soundboard_muted"))
+
 if __name__ == "__main__":
     unittest.main()
 

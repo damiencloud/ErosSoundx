@@ -10,6 +10,7 @@ class AuthManager:
     """
     def __init__(self):
         self.current_user = None  # Holds Supabase user object if logged in
+        self.current_session = None  # Holds active session details if logged in
 
     def get_client(self):
         return get_supabase_client()
@@ -60,6 +61,7 @@ class AuthManager:
 
             if session and user:
                 self.current_user = user
+                self.current_session = session
                 
                 # Check expiration attributes
                 expires_at = getattr(session, 'expires_at', None)
@@ -105,6 +107,7 @@ class AuthManager:
                 logger.error(f"Supabase remote sign out error: {e}")
 
         self.current_user = None
+        self.current_session = None
         clear_local_sessions()
         config_manager.set("last_session", {})
         logger.info("User signed out and local session cleared.")
@@ -136,6 +139,7 @@ class AuthManager:
 
             if user and session:
                 self.current_user = user
+                self.current_session = session
                 
                 # Update tokens (could have rotated)
                 expires_at = getattr(session, 'expires_at', None)

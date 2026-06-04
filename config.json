@@ -10,6 +10,14 @@
         "email": "damienjosephmartin10@gmail.com"
     },
     "streamer_mode": false,
+    "primary_audio_device": "Default",
+    "virtual_mic_enabled": true,
+    "virtual_mic_device": "CABLE Input (VB-Audio Virtual Cable)",
+    "mic_device": "Microphone (USB Audio Device)",
+    "mic_volume": 1.0,
+    "mic_muted": false,
+    "soundboard_playback_volume": 0.5,
+    "soundboard_muted": false,
     "master_volume": 0.0,
     "panic_hotkey": "Escape"
 }

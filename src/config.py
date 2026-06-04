@@ -19,7 +19,15 @@ class ConfigManager:
             "supabase_key": "",
             "remember_me": True,
             "last_session": {},          # Caches user profile & session tokens if remember_me is True
-            "streamer_mode": False       # Hides sensitive info in UI if True
+            "streamer_mode": False,      # Hides sensitive info in UI if True
+            "primary_audio_device": "Default",
+            "virtual_mic_enabled": False,
+            "virtual_mic_device": "",
+            "mic_device": "Default",
+            "mic_volume": 1.0,
+            "mic_muted": False,
+            "soundboard_playback_volume": 1.0,
+            "soundboard_muted": False
         }
 
         self.config = {}

@@ -24,7 +24,7 @@ class MacrosView(ctk.CTkFrame):
         self.grid_rowconfigure(0, weight=1)
 
         # 1. Left Sidebar: Macros List Panel
-        self.left_panel = ctk.CTkFrame(self, fg_color="#121320", border_color="#1f2833", border_width=1, corner_radius=12)
+        self.left_panel = ctk.CTkFrame(self, fg_color="#111222", border_color="#1a1b35", border_width=1, corner_radius=12)
         self.left_panel.grid(row=0, column=0, sticky="nsew", padx=(30, 10), pady=20)
         
         list_title = ctk.CTkLabel(
@@ -52,7 +52,7 @@ class MacrosView(ctk.CTkFrame):
         self.macro_list_scroll.pack(fill="both", expand=True, padx=5, pady=5)
 
         # 2. Right Panel: Macro Steps Editor
-        self.right_panel = ctk.CTkFrame(self, fg_color="#121320", border_color="#1f2833", border_width=1, corner_radius=12)
+        self.right_panel = ctk.CTkFrame(self, fg_color="#111222", border_color="#1a1b35", border_width=1, corner_radius=12)
         self.right_panel.grid(row=0, column=1, sticky="nsew", padx=(10, 30), pady=20)
         
         self.editor_welcome = ctk.CTkLabel(
@@ -83,7 +83,7 @@ class MacrosView(ctk.CTkFrame):
             text="Rename",
             width=70,
             height=25,
-            fg_color="#1a1c30",
+            fg_color="#04050a",
             border_color="#00f0ff",
             border_width=1,
             text_color="#00f0ff",
@@ -117,8 +117,8 @@ class MacrosView(ctk.CTkFrame):
             text="+ Play Sound Step",
             width=130,
             height=28,
-            fg_color="#1a1c30",
-            border_color="#1f2833",
+            fg_color="#04050a",
+            border_color="#1a1b35",
             border_width=1,
             text_color="#edf2f4",
             hover_color="#bc00dd",
@@ -132,8 +132,8 @@ class MacrosView(ctk.CTkFrame):
             text="+ Delay Step",
             width=100,
             height=28,
-            fg_color="#1a1c30",
-            border_color="#1f2833",
+            fg_color="#04050a",
+            border_color="#1a1b35",
             border_width=1,
             text_color="#edf2f4",
             hover_color="#bc00dd",
@@ -148,7 +148,7 @@ class MacrosView(ctk.CTkFrame):
             width=110,
             height=28,
             fg_color="#03dac6",
-            text_color="#0b0c10",
+            text_color="#04050a",
             hover_color="#01a896",
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
             command=self.play_current_macro
@@ -156,7 +156,7 @@ class MacrosView(ctk.CTkFrame):
         self.test_macro_btn.pack(side="right")
 
         # Scrollable container for the steps
-        self.steps_scroll = ctk.CTkScrollableFrame(self.editor_container, fg_color="#0b0c10", border_color="#1f2833", border_width=1, corner_radius=8)
+        self.steps_scroll = ctk.CTkScrollableFrame(self.editor_container, fg_color="#04050a", border_color="#1a1b35", border_width=1, corner_radius=8)
         self.steps_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 15))
 
         # Bottom save/cancel info
@@ -171,11 +171,16 @@ class MacrosView(ctk.CTkFrame):
         )
         self.save_info_lbl.pack(side="left")
 
+        # Bind hover effects on panels
+        self.left_panel.bind("<Enter>", lambda e: self.left_panel.configure(border_color="#bc00dd"))
+        self.left_panel.bind("<Leave>", lambda e: self.left_panel.configure(border_color="#1a1b35"))
+        self.right_panel.bind("<Enter>", lambda e: self.right_panel.configure(border_color="#bc00dd"))
+        self.right_panel.bind("<Leave>", lambda e: self.right_panel.configure(border_color="#1a1b35"))
+
     def update_view(self):
         """
         Reloads the macro list from database and refreshes editor if a macro is selected.
         """
-        # Load user ID (support guest session too)
         user_id = auth_manager.get_user_id() or "guest_user"
         macros = get_macros(user_id)
 
@@ -192,7 +197,6 @@ class MacrosView(ctk.CTkFrame):
             )
             no_macros_lbl.pack(pady=20)
             
-            # Hide editor panel if list is empty
             self.editor_welcome.pack(fill="both", expand=True)
             self.editor_container.pack_forget()
             self.selected_macro_id = None
@@ -202,14 +206,15 @@ class MacrosView(ctk.CTkFrame):
             m_id = m["id"]
             m_name = m["name"]
             
-            # Button for the macro
             is_active = (m_id == self.selected_macro_id)
             btn = ctk.CTkButton(
                 self.macro_list_scroll,
                 text=m_name,
-                fg_color="#1a1c30" if is_active else "transparent",
+                fg_color="#111222" if is_active else "transparent",
                 text_color="#00f0ff" if is_active else "#edf2f4",
-                hover_color="#121320",
+                hover_color="#111222",
+                border_color="#00f0ff" if is_active else "transparent",
+                border_width=1 if is_active else 0,
                 height=35,
                 anchor="w",
                 font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold" if is_active else "normal"),
@@ -217,9 +222,7 @@ class MacrosView(ctk.CTkFrame):
             )
             btn.pack(fill="x", pady=2, padx=5)
 
-        # If a macro was selected, make sure its display is updated
         if self.selected_macro_id:
-            # Check if selected macro still exists
             exists = any(m["id"] == self.selected_macro_id for m in macros)
             if exists:
                 self.load_macro_editor(self.selected_macro_id)
@@ -230,13 +233,12 @@ class MacrosView(ctk.CTkFrame):
 
     def select_macro(self, macro_id):
         self.selected_macro_id = macro_id
-        self.update_view()  # highlights list item
+        self.update_view()
 
     def load_macro_editor(self, macro_id):
         self.editor_welcome.pack_forget()
         self.editor_container.pack(fill="both", expand=True)
         
-        # Load name from SQLite
         from src.database.sqlite_db import get_macro_by_id
         macro = get_macro_by_id(macro_id)
         if not macro:
@@ -244,7 +246,6 @@ class MacrosView(ctk.CTkFrame):
             
         self.macro_name_label.configure(text=f"Edit Macro: {macro['name']}")
         
-        # Load steps
         steps = get_macro_steps(macro_id)
         self.local_steps = []
         for s in steps:
@@ -269,7 +270,6 @@ class MacrosView(ctk.CTkFrame):
             logger.info(f"Created new macro '{name}' successfully.")
             self.selected_macro_id = macro_id
             self.update_view()
-            # Trigger synchronization
             try:
                 from src.sync.sync_manager import sync_manager
                 sync_manager.trigger_sync()
@@ -318,7 +318,6 @@ class MacrosView(ctk.CTkFrame):
             messagebox.showerror("Error", "Failed to delete macro.", parent=self.winfo_toplevel())
 
     def draw_editor_steps(self):
-        # Clear steps container
         for widget in self.steps_scroll.winfo_children():
             widget.destroy()
 
@@ -332,7 +331,6 @@ class MacrosView(ctk.CTkFrame):
             no_steps_lbl.pack(pady=20)
             return
 
-        # Fetch all sounds for sound selector dropdowns
         all_sounds = []
         boards = soundboard_manager.get_boards()
         for b in boards:
@@ -344,24 +342,23 @@ class MacrosView(ctk.CTkFrame):
         sound_map = {f"{s['name']} (ID: {s['id'][:6]})": s["id"] for s in all_sounds}
 
         for index, step in enumerate(self.local_steps):
-            step_frame = ctk.CTkFrame(self.steps_scroll, fg_color="#121320", border_color="#1f2833", border_width=1, corner_radius=6)
+            step_frame = ctk.CTkFrame(self.steps_scroll, fg_color="#161726", border_color="#1a1b35", border_width=1, corner_radius=6)
             step_frame.pack(fill="x", pady=4, padx=5)
 
-            # Step index label
+            step_frame.bind("<Enter>", lambda e, sf=step_frame: sf.configure(border_color="#00f0ff"))
+            step_frame.bind("<Leave>", lambda e, sf=step_frame: sf.configure(border_color="#1a1b35"))
+
             idx_lbl = ctk.CTkLabel(step_frame, text=f"#{index + 1}", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color="#8e9aaf", width=25)
             idx_lbl.pack(side="left", padx=10)
 
-            # Draw based on action type
             action_type = step["action_type"]
             if action_type == "play":
                 type_lbl = ctk.CTkLabel(step_frame, text="PLAY SOUND", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color="#00f0ff", width=90, anchor="w")
                 type_lbl.pack(side="left")
 
-                # Dropdown for sound selection
                 curr_sound_id = step.get("sound_id")
                 curr_label = "Select Sound..."
                 
-                # Try to resolve sound details
                 if curr_sound_id:
                     matched_s = next((s for s in all_sounds if s["id"] == curr_sound_id), None)
                     if matched_s:
@@ -371,10 +368,10 @@ class MacrosView(ctk.CTkFrame):
                     step_frame,
                     values=sound_options if sound_options else ["No Sounds Found"],
                     width=200,
-                    fg_color="#0b0c10",
+                    fg_color="#04050a",
                     button_color="#bc00dd",
                     button_hover_color="#8c00aa",
-                    dropdown_fg_color="#121320",
+                    dropdown_fg_color="#111222",
                     command=lambda val, idx=index: self.on_step_sound_change(idx, val, sound_map)
                 )
                 dropdown.set(curr_label)
@@ -384,12 +381,10 @@ class MacrosView(ctk.CTkFrame):
                 type_lbl = ctk.CTkLabel(step_frame, text="DELAY WAIT", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color="#ffb703", width=90, anchor="w")
                 type_lbl.pack(side="left")
 
-                # Seconds Entry field
                 curr_delay = step.get("delay_seconds", 1.0)
-                entry = ctk.CTkEntry(step_frame, width=80, height=28, fg_color="#0b0c10", border_color="#1f2833")
+                entry = ctk.CTkEntry(step_frame, width=80, height=28, fg_color="#04050a", border_color="#1a1b35")
                 entry.insert(0, str(curr_delay))
                 
-                # Bind editing
                 entry.bind("<FocusOut>", lambda e, idx=index, ent=entry: self.on_step_delay_change(idx, ent.get()))
                 entry.bind("<Return>", lambda e, idx=index, ent=entry: self.on_step_delay_change(idx, ent.get()))
                 entry.pack(side="left", padx=10)
@@ -397,17 +392,15 @@ class MacrosView(ctk.CTkFrame):
                 sec_lbl = ctk.CTkLabel(step_frame, text="seconds", font=ctk.CTkFont(family="Segoe UI", size=11), text_color="#edf2f4")
                 sec_lbl.pack(side="left")
 
-            # Control buttons frame (Right aligned)
             ctrls = ctk.CTkFrame(step_frame, fg_color="transparent")
             ctrls.pack(side="right", padx=10)
 
-            # UP button
             up_btn = ctk.CTkButton(
                 ctrls,
                 text="▲",
                 width=24,
                 height=24,
-                fg_color="#1a1c30",
+                fg_color="#04050a",
                 text_color="#edf2f4",
                 hover_color="#bc00dd",
                 state="normal" if index > 0 else "disabled",
@@ -415,13 +408,12 @@ class MacrosView(ctk.CTkFrame):
             )
             up_btn.pack(side="left", padx=2)
 
-            # DOWN button
             down_btn = ctk.CTkButton(
                 ctrls,
                 text="▼",
                 width=24,
                 height=24,
-                fg_color="#1a1c30",
+                fg_color="#04050a",
                 text_color="#edf2f4",
                 hover_color="#bc00dd",
                 state="normal" if index < len(self.local_steps) - 1 else "disabled",
@@ -429,7 +421,6 @@ class MacrosView(ctk.CTkFrame):
             )
             down_btn.pack(side="left", padx=2)
 
-            # DELETE button
             del_btn = ctk.CTkButton(
                 ctrls,
                 text="✖",
@@ -480,7 +471,6 @@ class MacrosView(ctk.CTkFrame):
             pass
 
     def move_step(self, idx, direction):
-        # direction = -1 (up), 1 (down)
         target = idx + direction
         if 0 <= target < len(self.local_steps):
             self.local_steps[idx], self.local_steps[target] = self.local_steps[target], self.local_steps[idx]
@@ -493,16 +483,11 @@ class MacrosView(ctk.CTkFrame):
         self.draw_editor_steps()
 
     def save_steps_to_db(self):
-        """
-        Synchronizes UI's local steps representation to SQLite database.
-        """
         if not self.selected_macro_id:
             return
             
-        # 1. Clear existing steps in DB
         clear_macro_steps(self.selected_macro_id)
         
-        # 2. Add current local steps
         for pos, step in enumerate(self.local_steps):
             add_macro_step(
                 step_id=step["id"],
@@ -523,6 +508,5 @@ class MacrosView(ctk.CTkFrame):
     def play_current_macro(self):
         if not self.selected_macro_id:
             return
-        # Stop all running sounds/macros first, then trigger
         macro_manager.cancel_all()
         macro_manager.play_macro(self.selected_macro_id)
