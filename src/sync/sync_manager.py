@@ -126,6 +126,30 @@ class SyncManager:
                 self.is_syncing = False
 
 
+    def _initialize_storage_bucket(self, client) -> bool:
+        """
+        Verifies that the Supabase Storage bucket 'sounds' exists, creating it if missing.
+        Returns True on success, False if check/creation failed.
+        """
+        try:
+            logger.info("Sync: Verifying Supabase Storage bucket 'sounds' exists...")
+            try:
+                client.storage.get_bucket("sounds")
+                logger.info("Sync: Storage bucket 'sounds' verified successfully.")
+                return True
+            except Exception as get_err:
+                logger.warning(f"Sync: Storage bucket 'sounds' not found or inaccessible. Attempting to create it: {get_err}")
+                try:
+                    client.storage.create_bucket("sounds", options={"public": False})
+                    logger.info("Sync: Storage bucket 'sounds' created successfully.")
+                    return True
+                except Exception as create_err:
+                    logger.error(f"Sync: Failed to create Supabase Storage bucket 'sounds': {create_err}")
+                    return False
+        except Exception as e:
+            logger.error(f"Sync: Unexpected error during storage bucket verification: {e}")
+            return False
+
     def perform_sync(self) -> bool:
         """
         Executes the full sync flow. Returns True if completely successful, else False.
@@ -136,6 +160,11 @@ class SyncManager:
             return False
             
         logger.info("Sync: Starting synchronization cycle...")
+        
+        # Verify/initialize storage bucket
+        if not self._initialize_storage_bucket(client):
+            logger.error("Sync: Storage bucket verification failed. Aborting synchronization cycle.")
+            return False
         
         try:
             # 1. Sync settings
@@ -253,6 +282,31 @@ class SyncManager:
             t_id = t["id"]
             tbl = t["table_name"]
             try:
+                # If deleting from sounds table, check storage path cleanup first
+                if tbl == "sounds":
+                    try:
+                        remote_sound_res = client.table("sounds").select("supabase_storage_path, sha256_hash").eq("id", t_id).execute()
+                        if remote_sound_res.data:
+                            remote_sound = remote_sound_res.data[0]
+                            storage_path = remote_sound.get("supabase_storage_path")
+                            if storage_path:
+                                # Count other sounds referencing this storage path
+                                local_ref_count = 0
+                                with sqlite_db.get_db_connection() as conn:
+                                    local_ref_count = conn.execute("SELECT count(*) FROM sounds WHERE supabase_storage_path = ? AND id != ?", (storage_path, t_id)).fetchone()[0]
+                                
+                                remote_ref_count = 0
+                                remote_count_res = client.table("sounds").select("id").eq("supabase_storage_path", storage_path).neq("id", t_id).execute()
+                                if remote_count_res.data:
+                                    remote_ref_count = len(remote_count_res.data)
+                                    
+                                if local_ref_count == 0 and remote_ref_count == 0:
+                                    logger.info(f"Sync: Storage path '{storage_path}' has no other references. Deleting file from bucket.")
+                                    bucket = client.storage.from_("sounds")
+                                    bucket.remove(storage_path)
+                    except Exception as clean_err:
+                        logger.error(f"Sync: Failed to clean up orphaned storage file for {t_id}: {clean_err}")
+                
                 # Delete remotely
                 client.table(tbl).delete().eq("id", t_id).execute()
                 success_ids.append(t_id)
@@ -346,11 +400,27 @@ class SyncManager:
         # Query SQLite sounds for user_id
         try:
             with sqlite_db.get_db_connection() as conn:
-                rows = conn.execute("SELECT id, soundboard_id, user_id, name, file_path, supabase_storage_path, hotkey, volume, is_favorite, is_synced, updated_at FROM sounds WHERE user_id = ?", (user_id,)).fetchall()
+                rows = conn.execute("SELECT id, soundboard_id, user_id, name, file_path, supabase_storage_path, hotkey, volume, is_favorite, is_synced, updated_at, sha256_hash FROM sounds WHERE user_id = ?", (user_id,)).fetchall()
                 local_sounds = [dict(row) for row in rows]
         except Exception as e:
             logger.error(f"Sync: Failed to query sounds: {e}")
             
+        # Retrofit missing hashes for local sounds
+        for s in local_sounds:
+            if (not s.get("sha256_hash") or s["sha256_hash"] == "") and os.path.exists(s["file_path"]):
+                import hashlib
+                sha_hash = hashlib.sha256()
+                try:
+                    with open(s["file_path"], "rb") as f:
+                        for byte_block in iter(lambda: f.read(4096), b""):
+                            sha_hash.update(byte_block)
+                    h = sha_hash.hexdigest()
+                    s["sha256_hash"] = h
+                    sqlite_db.update_sound_hash(s["id"], h)
+                    logger.info(f"Sync: Retrofitted SHA256 hash for local sound '{s['name']}': {h}")
+                except Exception as e:
+                    logger.error(f"Sync: Failed to compute hash for existing sound '{s['name']}': {e}")
+
         local_map = {s["id"]: s for s in local_sounds}
 
         # Fetch remote
@@ -360,13 +430,6 @@ class SyncManager:
 
         # Verify storage bucket "sounds" exists
         bucket = client.storage.from_("sounds")
-        try:
-            client.storage.get_bucket("sounds")
-        except Exception:
-            try:
-                client.storage.create_bucket("sounds", options={"public": False})
-            except Exception as e:
-                logger.debug(f"Sync: Bucket check/create skipped: {e}")
 
         sounds_to_upsert = []
         synced_sound_ids = []
@@ -386,13 +449,33 @@ class SyncManager:
             # If path exists but let's double check if we need to force file upload
             if needs_upload and os.path.exists(s["file_path"]):
                 try:
-                    logger.debug(f"Sync: Uploading file for sound '{s['name']}' to: {remote_path}")
-                    with open(s["file_path"], "rb") as f:
-                        bucket.upload(
-                            path=remote_path,
-                            file=f,
-                            file_options={"cache-control": "3600", "upsert": "true"}
-                        )
+                    # DEDUPLICATION CHECK
+                    shared_remote_path = None
+                    # 1. Search local map
+                    for other_id, other_s in local_map.items():
+                        if other_id != s_id and other_s.get("sha256_hash") == s.get("sha256_hash") and other_s.get("supabase_storage_path"):
+                            shared_remote_path = other_s["supabase_storage_path"]
+                            break
+                    
+                    # 2. Search remote map
+                    if not shared_remote_path:
+                        for other_id, other_r in remote_map.items():
+                            if other_id != s_id and other_r.get("sha256_hash") == s.get("sha256_hash") and other_r.get("supabase_storage_path"):
+                                shared_remote_path = other_r["supabase_storage_path"]
+                                break
+
+                    if shared_remote_path:
+                        logger.info(f"Sync: Deduplication hit! Reusing storage path '{shared_remote_path}' for sound '{s['name']}'")
+                        remote_path = shared_remote_path
+                    else:
+                        logger.debug(f"Sync: Uploading file for sound '{s['name']}' to: {remote_path}")
+                        with open(s["file_path"], "rb") as f:
+                            bucket.upload(
+                                path=remote_path,
+                                file=f,
+                                file_options={"cache-control": "3600", "upsert": "true"}
+                            )
+                            
                     # Update local schema storage path and flag it as unsynced (so metadata is pushed)
                     s["supabase_storage_path"] = remote_path
                     sqlite_db.update_sound_storage_path(s_id, remote_path)
@@ -409,6 +492,7 @@ class SyncManager:
                     "user_id": s["user_id"],
                     "name": s["name"],
                     "supabase_storage_path": s["supabase_storage_path"],
+                    "sha256_hash": s.get("sha256_hash"),
                     "hotkey": s["hotkey"],
                     "volume": float(s["volume"]),
                     "is_favorite": int(s["is_favorite"]),
@@ -424,6 +508,7 @@ class SyncManager:
                         "user_id": s["user_id"],
                         "name": s["name"],
                         "supabase_storage_path": s["supabase_storage_path"],
+                        "sha256_hash": s.get("sha256_hash"),
                         "hotkey": s["hotkey"],
                         "volume": float(s["volume"]),
                         "is_favorite": int(s["is_favorite"]),
@@ -435,7 +520,8 @@ class SyncManager:
                     sqlite_db.save_remote_sound(
                         r["id"], r["soundboard_id"], r["user_id"], r["name"],
                         s["file_path"], r["supabase_storage_path"], r["hotkey"],
-                        r["volume"], r["is_favorite"], r["updated_at"]
+                        r["volume"], r["is_favorite"], r["updated_at"],
+                        sha256_hash=r.get("sha256_hash")
                     )
                     logger.debug(f"Sync: Pulled newer remote sound metadata: {r['name']}")
 
@@ -460,17 +546,31 @@ class SyncManager:
                 sqlite_db.save_remote_sound(
                     r["id"], r["soundboard_id"], r["user_id"], r["name"],
                     local_file_path, r["supabase_storage_path"], r["hotkey"],
-                    r["volume"], r["is_favorite"], r["updated_at"]
+                    r["volume"], r["is_favorite"], r["updated_at"],
+                    sha256_hash=r.get("sha256_hash")
                 )
                 logger.info(f"Sync: Restored sound metadata: {r['name']}")
 
                 # Download file object
                 try:
-                    logger.info(f"Sync: Downloading remote sound file: {r_path}")
-                    response_data = bucket.download(r_path)
-                    with open(local_file_path, "wb") as f:
-                        f.write(response_data)
-                    logger.info(f"Sync: Cached sound file restored to {local_file_path}")
+                    restored_from_local = False
+                    r_hash = r.get("sha256_hash")
+                    if r_hash:
+                        # Scan existing local sounds
+                        for other_id, other_s in local_map.items():
+                            if other_s.get("sha256_hash") == r_hash and os.path.exists(other_s["file_path"]):
+                                import shutil
+                                shutil.copy2(other_s["file_path"], local_file_path)
+                                logger.info(f"Sync: Restored remote sound from existing local cache: {r['name']} (hash match)")
+                                restored_from_local = True
+                                break
+                                
+                    if not restored_from_local:
+                        logger.info(f"Sync: Downloading remote sound file: {r_path}")
+                        response_data = bucket.download(r_path)
+                        with open(local_file_path, "wb") as f:
+                            f.write(response_data)
+                        logger.info(f"Sync: Cached sound file restored to {local_file_path}")
                 except Exception as dl_err:
                     logger.error(f"Sync: Failed to download audio file {r_path}: {dl_err}")
 
@@ -481,12 +581,25 @@ class SyncManager:
                 # If local file does not exist on disk but we have remote path, download it
                 if not os.path.exists(s["file_path"]) and s["supabase_storage_path"]:
                     try:
-                        logger.info(f"Sync: Cache hit but local file missing. Re-downloading: {s['supabase_storage_path']}")
-                        response_data = bucket.download(s["supabase_storage_path"])
-                        os.makedirs(os.path.dirname(s["file_path"]), exist_ok=True)
-                        with open(s["file_path"], "wb") as f:
-                            f.write(response_data)
-                        logger.info(f"Sync: Successfully restored cached file: {s['file_path']}")
+                        restored_from_local = False
+                        s_hash = s.get("sha256_hash")
+                        if s_hash:
+                            for other_id, other_s in local_map.items():
+                                if other_id != s_id and other_s.get("sha256_hash") == s_hash and os.path.exists(other_s["file_path"]):
+                                    import shutil
+                                    os.makedirs(os.path.dirname(s["file_path"]), exist_ok=True)
+                                    shutil.copy2(other_s["file_path"], s["file_path"])
+                                    logger.info(f"Sync: Restored missing file via local copy for hash {s_hash} -> {s['file_path']}")
+                                    restored_from_local = True
+                                    break
+
+                        if not restored_from_local:
+                            logger.info(f"Sync: Cache hit but local file missing. Re-downloading: {s['supabase_storage_path']}")
+                            response_data = bucket.download(s["supabase_storage_path"])
+                            os.makedirs(os.path.dirname(s["file_path"]), exist_ok=True)
+                            with open(s["file_path"], "wb") as f:
+                                f.write(response_data)
+                            logger.info(f"Sync: Successfully restored cached file: {s['file_path']}")
                     except Exception as redl_err:
                         logger.error(f"Sync: Failed to re-download missing cache file {s['supabase_storage_path']}: {redl_err}")
 

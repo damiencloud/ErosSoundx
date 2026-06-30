@@ -52,6 +52,22 @@ class SoundboardManager:
         return user_dir
 
     @staticmethod
+    def _compute_sha256(file_path: str) -> str:
+        """
+        Computes the SHA256 checksum of the specified file.
+        """
+        import hashlib
+        sha_hash = hashlib.sha256()
+        try:
+            with open(file_path, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096), b""):
+                    sha_hash.update(byte_block)
+            return sha_hash.hexdigest()
+        except Exception as e:
+            logger.error(f"Failed to calculate SHA256 hash for {file_path}: {e}")
+            return ""
+
+    @staticmethod
     def _detect_duration(file_path: str) -> float:
         """
         Returns the duration of an audio file in seconds.
@@ -266,6 +282,9 @@ class SoundboardManager:
             logger.error(f"Failed to cache audio file: {e}")
             return ""
 
+        # Compute SHA256 hash of the cached file
+        sha256_hash = self._compute_sha256(dest_path)
+
         success = sqlite_db.add_sound(
             sound_id=sound_id,
             soundboard_id=soundboard_id,
@@ -275,7 +294,8 @@ class SoundboardManager:
             hotkey=hotkey,
             volume=1.0,
             is_favorite=0,
-            duration=duration
+            duration=duration,
+            sha256_hash=sha256_hash
         )
 
         if not success:

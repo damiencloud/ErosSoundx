@@ -66,6 +66,7 @@ def init_db():
         name TEXT NOT NULL,
         file_path TEXT NOT NULL,
         supabase_storage_path TEXT,
+        sha256_hash TEXT,
         hotkey TEXT,
         volume REAL DEFAULT 1.0,
         duration REAL DEFAULT 0.0,
@@ -168,6 +169,13 @@ def init_db():
                 )
                 conn.commit()
                 logger.info("Migration applied: sounds.created_at column added.")
+
+            if "sha256_hash" not in sound_cols:
+                conn.execute(
+                    "ALTER TABLE sounds ADD COLUMN sha256_hash TEXT;"
+                )
+                conn.commit()
+                logger.info("Migration applied: sounds.sha256_hash column added.")
 
         logger.info("SQLite database schema initialized successfully.")
     except Exception as e:
@@ -330,7 +338,7 @@ def delete_soundboard(sb_id):
 # --- SOUND CRUD OPERATIONS ---
 
 def add_sound(sound_id, soundboard_id, user_id, name, file_path,
-             hotkey=None, volume=1.0, is_favorite=0, duration=0.0):
+             hotkey=None, volume=1.0, is_favorite=0, duration=0.0, sha256_hash=None):
     """
     Inserts a new sound record. Both created_at and updated_at are set to the
     current Unix timestamp. Duration is stored in seconds (float).
@@ -340,16 +348,16 @@ def add_sound(sound_id, soundboard_id, user_id, name, file_path,
     INSERT INTO sounds (
         id, soundboard_id, user_id, name, file_path,
         hotkey, volume, duration, is_favorite, is_synced,
-        created_at, updated_at
+        created_at, updated_at, sha256_hash
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     """
     try:
         with get_db_connection() as conn:
             conn.execute(query, (
                 sound_id, soundboard_id, user_id, name, file_path,
                 hotkey, volume, float(duration), is_favorite,
-                now, now
+                now, now, sha256_hash
             ))
             conn.commit()
         logger.info(f"Added local sound: {name} ({sound_id})")
@@ -364,7 +372,7 @@ def get_sounds(soundboard_id):
     """
     query = """
     SELECT id, soundboard_id, user_id, name, file_path, supabase_storage_path,
-           hotkey, volume, duration, is_favorite, is_synced, created_at, updated_at
+           hotkey, volume, duration, is_favorite, is_synced, created_at, updated_at, sha256_hash
     FROM sounds
     WHERE soundboard_id = ?
     ORDER BY name ASC
@@ -383,7 +391,7 @@ def get_favorite_sounds(user_id):
     """
     query = """
     SELECT id, soundboard_id, user_id, name, file_path, supabase_storage_path,
-           hotkey, volume, duration, is_favorite, is_synced, created_at, updated_at
+           hotkey, volume, duration, is_favorite, is_synced, created_at, updated_at, sha256_hash
     FROM sounds
     WHERE user_id = ? AND is_favorite = 1
     ORDER BY name ASC
@@ -498,7 +506,7 @@ def get_sound_by_id(sound_id):
     """
     query = """
     SELECT id, soundboard_id, user_id, name, file_path, supabase_storage_path,
-           hotkey, volume, duration, is_favorite, is_synced, created_at, updated_at
+           hotkey, volume, duration, is_favorite, is_synced, created_at, updated_at, sha256_hash
     FROM sounds WHERE id = ?
     """
     try:
@@ -587,14 +595,14 @@ def save_remote_soundboard(sb_id, user_id, name, category, updated_at, is_favori
         logger.error(f"Failed to save remote soundboard to SQLite: {e}")
         return False
 
-def save_remote_sound(sound_id, soundboard_id, user_id, name, file_path, supabase_storage_path, hotkey, volume, is_favorite, updated_at):
+def save_remote_sound(sound_id, soundboard_id, user_id, name, file_path, supabase_storage_path, hotkey, volume, is_favorite, updated_at, sha256_hash=None):
     query = """
-    INSERT OR REPLACE INTO sounds (id, soundboard_id, user_id, name, file_path, supabase_storage_path, hotkey, volume, is_favorite, is_synced, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+    INSERT OR REPLACE INTO sounds (id, soundboard_id, user_id, name, file_path, supabase_storage_path, hotkey, volume, is_favorite, is_synced, updated_at, sha256_hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
     """
     try:
         with get_db_connection() as conn:
-            conn.execute(query, (sound_id, soundboard_id, user_id, name, file_path, supabase_storage_path, hotkey, float(volume), int(is_favorite), int(updated_at)))
+            conn.execute(query, (sound_id, soundboard_id, user_id, name, file_path, supabase_storage_path, hotkey, float(volume), int(is_favorite), int(updated_at), sha256_hash))
             conn.commit()
         return True
     except Exception as e:
@@ -638,6 +646,17 @@ def update_sound_storage_path(sound_id, storage_path):
         return True
     except Exception as e:
         logger.error(f"Failed to update sound storage path: {e}")
+        return False
+
+def update_sound_hash(sound_id, sha256_hash):
+    query = "UPDATE sounds SET sha256_hash = ?, updated_at = ? WHERE id = ?"
+    try:
+        with get_db_connection() as conn:
+            conn.execute(query, (sha256_hash, int(time.time()), sound_id))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update sound hash: {e}")
         return False
 
 # --- MACROS & MACRO STEPS CRUD HELPERS ---
